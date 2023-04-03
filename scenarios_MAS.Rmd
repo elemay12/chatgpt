@@ -1,0 +1,1281 @@
+---
+title: "Scénarios exploitation - chasse orignal MAS"
+author: "Evelyne Lemay"
+date: "31 mars 2023"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    toc_collapsed: true
+---
+
+# Scénarios Sépaq 
+
+*N.B. Les données 2023 à 2029 constituent des projections estimées à partir du modèle de population Lamoureux et des données de population recueillies lors de l'inventaire aérien du MELCCFP réalisé en 2023. Il inclut notamment les paramètres suivants :*
+*Productivité femelles : 27,7%*  
+*Survie naturelle adulte : 95%*  
+*Survie naturelle veaux : 70%*  
+
+*Les pourcentage de modulation des contingents réfèrent à la récolte de 2022*
+
+
+```{r setup_mod, include=FALSE}
+## Télécharger les packages
+#library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(nlme)
+library(scales)
+library(multcompView)
+library(emmeans)
+library(mgcv)
+library(cowplot)
+library(plotrix)
+library(lubridate)
+library(e1071)
+library(tidyr)
+
+
+##Définir l'espace de travail
+setwd("C:/Users/lemay.evelyne/Documents/R/Orignal_MAS")
+
+##importer la donnée
+scenarios <- read.table("mod_MAS.csv",row.names=NULL,h=T,sep=";")
+
+##mise en forme des données 
+str(scenarios)
+scenarios$SCENARIO=as.factor(scenarios$SCENARIO)
+scenarios$TERRITOIRE=as.factor(scenarios$TERRITOIRE)
+scenarios$SAISON=as.factor(scenarios$SAISON)
+scenarios$SEGMENT=as.factor(scenarios$SEGMENT)
+scenarios$NB_POP=as.integer(scenarios$NB_POP)
+scenarios$SURVIE_AD=as.numeric(scenarios$SURVIE_AD)
+scenarios$SURVIE_V=as.numeric(scenarios$SURVIE_V)
+scenarios$PROD=as.numeric(scenarios$PROD)
+scenarios$PROD<-format(round(scenarios$PROD,2),nsmall=2)
+scenarios$PROD=as.numeric(scenarios$PROD)
+scenarios$SEX_RATIO=as.numeric(scenarios$SEX_RATIO)
+scenarios$SEX_RATIO<-format(round(scenarios$SEX_RATIO,0),nsmall=0)
+scenarios$SEX_RATIO=as.numeric(scenarios$SEX_RATIO)
+scenarios$TAUX_EXP_SEPAQ=as.numeric(scenarios$TAUX_EXP_SEPAQ)
+scenarios$TAUX_EXP_AUTOCH=as.numeric(scenarios$TAUX_EXP_AUTOCH)
+scenarios$TAUX_EXP_TOTAL=as.numeric(scenarios$TAUX_EXP_TOTAL)
+scenarios$TAUX_EXP_M=as.numeric(scenarios$TAUX_EXP_M)
+scenarios$TAUX_EXP_F=as.numeric(scenarios$TAUX_EXP_F)
+scenarios$TAUX_EXP_SEPAQ<-format(round(scenarios$TAUX_EXP_SEPAQ,1),nsmall=1)
+scenarios$TAUX_EXP_SEPAQ=as.numeric(scenarios$TAUX_EXP_SEPAQ)
+scenarios$TAUX_EXP_AUTOCH<-format(round(scenarios$TAUX_EXP_AUTOCH,1),nsmall=1)
+scenarios$TAUX_EXP_AUTOCH=as.numeric(scenarios$TAUX_EXP_AUTOCH)
+scenarios$TAUX_EXP_TOTAL<-format(round(scenarios$TAUX_EXP_TOTAL,1),nsmall=1)
+scenarios$TAUX_EXP_TOTAL=as.numeric(scenarios$TAUX_EXP_TOTAL)
+scenarios$TAUX_EXP_M<-format(round(scenarios$TAUX_EXP_M,1),nsmall=1)
+scenarios$TAUX_EXP_F<-format(round(scenarios$TAUX_EXP_F,1),nsmall=1)
+scenarios$TAUX_EXP_M=as.numeric(scenarios$TAUX_EXP_M)
+scenarios$TAUX_EXP_F=as.numeric(scenarios$TAUX_EXP_F)
+scenarios$DENSITE=as.numeric(as.character(scenarios$DENSITE))
+scenarios$DENSITE<-format(round(scenarios$DENSITE,1),nsmall=1)
+scenarios$DENSITE=as.numeric(as.character(scenarios$DENSITE))
+scenarios$SEGMENT = factor(scenarios$SEGMENT, levels = c("TOTAL","F","M","V"))
+
+
+## extraire scénarios 
+
+statuquo<-scenarios%>%filter(SCENARIO=="STATUQUO",SAISON=="A")%>%
+  group_by(ANNEE)
+
+M25<-scenarios%>%filter(SCENARIO=="M25",SAISON=="A")%>%
+  group_by(ANNEE)
+
+M25_F125<-scenarios%>%filter(SCENARIO=="M25_F125",SAISON=="A")%>%
+  group_by(ANNEE)
+
+M25_F50<-scenarios%>%filter(SCENARIO=="M25_F50",SAISON=="A")%>%
+  group_by(ANNEE)
+
+M25_F0<-scenarios%>%filter(SCENARIO=="M25_F0",SAISON=="A")%>%
+  group_by(ANNEE)
+
+```
+
+
+
+scenarios = ["statuquo", "M25", "M25_F0", ...] # list of scenarios
+for scenario in scenarios:
+    # code to be executed for each scenario
+    print(f"Processing scenario {scenario}")
+
+## Statuquo 
+
+*Maintien des paramètres de récolte 2022*
+
+### Récolte par organisation    
+```{r graph recolte statuquo, echo = FALSE, message=FALSE, warning=FALSE}
+rec=statuquo %>%
+    gather(key,value, R_SEPAQ)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_rec_statuquo<-ggplot(rec, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nb orignaux récoltés")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_rec_statuquo
+
+```
+
+### Taux exploitation   
+```{r graph taux exp statuquo, echo = FALSE, message=FALSE, warning=FALSE}
+texp=statuquo %>%
+    gather(key,value, TAUX_EXP_SEPAQ)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_statuquo<-ggplot(texp, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_statuquo
+
+```
+
+
+### Taux exploitation segment mâle 
+```{r graph taux exp m statuquo, echo = FALSE, message=FALSE, warning=FALSE}
+texpm=statuquo %>%
+    gather(key,value, TAUX_EXP_M)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_statuquo<-ggplot(texpm, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation mâles (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_statuquo
+
+```
+
+### Taux exploitation segment femelle 
+```{r graph taux exp f statuquo, echo = FALSE, message=FALSE, warning=FALSE}
+texpf=statuquo %>%
+    gather(key,value, TAUX_EXP_F)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_statuquo<-ggplot(texpf, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation femelles (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_statuquo
+
+```
+
+### Récolte par segment   
+```{r graph recolte seg statuquo, echo = FALSE, message=FALSE, warning=FALSE}
+recseg <- droplevels(statuquo[!statuquo$SEGMENT == 'TOTAL',])
+recseg$SEGMENT = factor(recseg$SEGMENT, levels = c("V","F","M"))
+
+g_rec_statuquo<-ggplot(recseg, aes(ANNEE,R_TOTAL, fill=SEGMENT, label=R_TOTAL)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nb orignaux récoltés")+
+  scale_fill_manual(values = c("#A7D59E", "#36903E", "#004616"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_rec_statuquo
+
+```
+
+### Population d'orignaux   
+```{r graph pop statuquo, echo = FALSE, message=FALSE, warning=FALSE}
+g_pop<-ggplot(statuquo, aes(ANNEE,NB_POP,group=SEGMENT,color=SEGMENT)) +
+  geom_smooth()+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  #scale_y_continuous(limits=c(-500,3000))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nombre d'orignaux")+
+  scale_color_manual(values=c("black","#36903E", "#004616","#A7D59E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_pop
+
+```
+
+### Densité   
+```{r graph densite statuquo, echo = FALSE, message=FALSE, warning=FALSE}
+
+g_densite<-ggplot(statuquo, aes(ANNEE, DENSITE)) +
+  geom_smooth(color="black")+
+  labs(x="Année",y="Densité (nb orignaux/10km2)")+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  #scale_colour_manual(name="Valeur", labels=c("Densité (Nb orignaux/10km2)","Sex ratio (%)","Taux d'exploitation (%)"), values=c("blue","red"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="none",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_densite
+
+```
+
+### Sex ratio   
+```{r graph sex ratio statuquo, echo = FALSE, message=FALSE, warning=FALSE}
+
+g_sexratio<-ggplot(statuquo, aes(ANNEE, SEX_RATIO)) +
+  geom_smooth(color="black")+
+  geom_hline(yintercept=0,linetype="dashed")+
+  labs(x="Année",y="% mâles dans population adulte à l'automne")+
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="none",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_sexratio
+
+```
+
+
+
+
+
+
+## Diminution récolte mâles 
+
+*Diminution de 75% de la récolte de mâles 2022, aucun changement dans la récolte de femelles et veaux*
+
+### Récolte par organisation    
+```{r graph recolte M25, echo = FALSE, message=FALSE, warning=FALSE}
+rec=M25 %>%
+    gather(key,value, R_SEPAQ)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_rec_M25<-ggplot(rec, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nb orignaux récoltés")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_rec_M25
+
+```
+
+### Taux exploitation   
+```{r graph taux exp M25, echo = FALSE, message=FALSE, warning=FALSE}
+texp=M25 %>%
+    gather(key,value, TAUX_EXP_SEPAQ)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25<-ggplot(texp, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25
+
+```
+
+
+### Taux exploitation segment mâle 
+```{r graph taux exp m M25, echo = FALSE, message=FALSE, warning=FALSE}
+texpm=M25 %>%
+    gather(key,value, TAUX_EXP_M)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25<-ggplot(texpm, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation mâles (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25
+
+```
+
+### Taux exploitation segment femelle 
+```{r graph taux exp f M25, echo = FALSE, message=FALSE, warning=FALSE}
+texpf=M25 %>%
+    gather(key,value, TAUX_EXP_F)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25<-ggplot(texpf, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation femelles (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25
+
+```
+
+### Récolte par segment   
+```{r graph recolte seg M25, echo = FALSE, message=FALSE, warning=FALSE}
+recseg <- droplevels(M25[!M25$SEGMENT == 'TOTAL',])
+recseg$SEGMENT = factor(recseg$SEGMENT, levels = c("V","F","M"))
+
+g_rec_M25<-ggplot(recseg, aes(ANNEE,R_TOTAL, fill=SEGMENT, label=R_TOTAL)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nb orignaux récoltés")+
+  scale_fill_manual(values = c("#A7D59E", "#36903E", "#004616"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_rec_M25
+
+```
+
+### Population d'orignaux   
+```{r graph pop M25, echo = FALSE, message=FALSE, warning=FALSE}
+g_pop<-ggplot(M25, aes(ANNEE,NB_POP,group=SEGMENT,color=SEGMENT)) +
+  geom_smooth()+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  #scale_y_continuous(limits=c(-500,3000))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nombre d'orignaux")+
+  scale_color_manual(values=c("black","#36903E", "#004616","#A7D59E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_pop
+
+```
+
+### Densité   
+```{r graph densite M25, echo = FALSE, message=FALSE, warning=FALSE}
+
+g_densite<-ggplot(M25, aes(ANNEE, DENSITE)) +
+  geom_smooth(color="black")+
+  labs(x="Année",y="Densité (nb orignaux/10km2)")+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  #scale_colour_manual(name="Valeur", labels=c("Densité (Nb orignaux/10km2)","Sex ratio (%)","Taux d'exploitation (%)"), values=c("blue","red"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="none",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_densite
+
+```
+
+### Sex ratio   
+```{r graph sex ratio M25, echo = FALSE, message=FALSE, warning=FALSE}
+
+g_sexratio<-ggplot(M25, aes(ANNEE, SEX_RATIO)) +
+  geom_smooth(color="black")+
+  geom_hline(yintercept=0,linetype="dashed")+
+  labs(x="Année",y="% mâles dans population adulte à l'automne")+
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="none",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_sexratio
+
+```
+
+
+
+
+
+## Diminution récolte mâles et augmentation récolte femelles
+
+*Diminution de 75% de la récolte de mâles, augmentation de 25% de la récolte de femelles, aucun changement dans la récolte de veaux, toujours par rapport à la récolte 2022*
+
+### Récolte par organisation    
+```{r graph recolte M25_F125, echo = FALSE, message=FALSE, warning=FALSE}
+rec=M25_F125 %>%
+    gather(key,value, R_SEPAQ)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_rec_M25_F125<-ggplot(rec, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nb orignaux récoltés")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_rec_M25_F125
+
+```
+
+### Taux exploitation   
+```{r graph taux exp M25_F125, echo = FALSE, message=FALSE, warning=FALSE}
+texp=M25_F125 %>%
+    gather(key,value, TAUX_EXP_SEPAQ)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25_F125<-ggplot(texp, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25_F125
+
+```
+
+
+### Taux exploitation segment mâle 
+```{r graph taux exp m M25_F125, echo = FALSE, message=FALSE, warning=FALSE}
+texpm=M25_F125 %>%
+    gather(key,value, TAUX_EXP_M)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25_F125<-ggplot(texpm, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation mâles (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25_F125
+
+```
+
+### Taux exploitation segment femelle 
+```{r graph taux exp f M25_F125, echo = FALSE, message=FALSE, warning=FALSE}
+texpf=M25_F125 %>%
+    gather(key,value, TAUX_EXP_F)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25_F125<-ggplot(texpf, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation femelles (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25_F125
+
+```
+
+### Récolte par segment   
+```{r graph recolte seg M25_F125, echo = FALSE, message=FALSE, warning=FALSE}
+recseg <- droplevels(M25_F125[!M25_F125$SEGMENT == 'TOTAL',])
+recseg$SEGMENT = factor(recseg$SEGMENT, levels = c("V","F","M"))
+
+g_rec_M25_F125<-ggplot(recseg, aes(ANNEE,R_TOTAL, fill=SEGMENT, label=R_TOTAL)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nb orignaux récoltés")+
+  scale_fill_manual(values = c("#A7D59E", "#36903E", "#004616"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_rec_M25_F125
+
+```
+
+### Population d'orignaux   
+```{r graph pop M25_F125, echo = FALSE, message=FALSE, warning=FALSE}
+g_pop<-ggplot(M25_F125, aes(ANNEE,NB_POP,group=SEGMENT,color=SEGMENT)) +
+  geom_smooth()+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  #scale_y_continuous(limits=c(-500,3000))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nombre d'orignaux")+
+  scale_color_manual(values=c("black","#36903E", "#004616","#A7D59E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_pop
+
+```
+
+### Densité   
+```{r graph densite M25_F125, echo = FALSE, message=FALSE, warning=FALSE}
+
+g_densite<-ggplot(M25_F125, aes(ANNEE, DENSITE)) +
+  geom_smooth(color="black")+
+  labs(x="Année",y="Densité (nb orignaux/10km2)")+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  #scale_colour_manual(name="Valeur", labels=c("Densité (Nb orignaux/10km2)","Sex ratio (%)","Taux d'exploitation (%)"), values=c("blue","red"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="none",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_densite
+
+```
+
+### Sex ratio   
+```{r graph sex ratio M25_F125, echo = FALSE, message=FALSE, warning=FALSE}
+
+g_sexratio<-ggplot(M25_F125, aes(ANNEE, SEX_RATIO)) +
+  geom_smooth(color="black")+
+  geom_hline(yintercept=0,linetype="dashed")+
+  labs(x="Année",y="% mâles dans population adulte à l'automne")+
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="none",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_sexratio
+
+```
+
+
+
+
+
+
+## Diminution récolte mâles et aucune récolte femelles
+
+*Diminution de 75% de la récolte de mâles, aucune récolte de femelles et veaux, toujours par rapport à la récolte 2022*
+
+### Récolte par organisation    
+```{r graph recolte M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+rec=M25_F0 %>%
+    gather(key,value, R_SEPAQ)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_rec_M25_F0<-ggplot(rec, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nb orignaux récoltés")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_rec_M25_F0
+
+```
+
+### Taux exploitation   
+```{r graph taux exp M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+texp=M25_F0 %>%
+    gather(key,value, TAUX_EXP_SEPAQ)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25_F0<-ggplot(texp, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25_F0
+
+```
+
+
+### Taux exploitation segment mâle 
+```{r graph taux exp m M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+texpm=M25_F0 %>%
+    gather(key,value, TAUX_EXP_M)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25_F0<-ggplot(texpm, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation mâles (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25_F0
+
+```
+
+### Taux exploitation segment femelle 
+```{r graph taux exp f M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+texpf=M25_F0 %>%
+    gather(key,value, TAUX_EXP_F)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25_F0<-ggplot(texpf, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation femelles (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25_F0
+
+```
+
+### Récolte par segment   
+```{r graph recolte seg M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+recseg <- droplevels(M25_F0[!M25_F0$SEGMENT == 'TOTAL',])
+recseg$SEGMENT = factor(recseg$SEGMENT, levels = c("V","F","M"))
+
+g_rec_M25_F0<-ggplot(recseg, aes(ANNEE,R_TOTAL, fill=SEGMENT, label=R_TOTAL)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nb orignaux récoltés")+
+  scale_fill_manual(values = c("#A7D59E", "#36903E", "#004616"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_rec_M25_F0
+
+```
+
+### Population d'orignaux   
+```{r graph pop M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+g_pop<-ggplot(M25_F0, aes(ANNEE,NB_POP,group=SEGMENT,color=SEGMENT)) +
+  geom_smooth()+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  #scale_y_continuous(limits=c(-500,3000))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nombre d'orignaux")+
+  scale_color_manual(values=c("black","#36903E", "#004616","#A7D59E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_pop
+
+```
+
+### Densité   
+```{r graph densite M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+
+g_densite<-ggplot(M25_F0, aes(ANNEE, DENSITE)) +
+  geom_smooth(color="black")+
+  labs(x="Année",y="Densité (nb orignaux/10km2)")+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  #scale_colour_manual(name="Valeur", labels=c("Densité (Nb orignaux/10km2)","Sex ratio (%)","Taux d'exploitation (%)"), values=c("blue","red"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="none",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_densite
+
+```
+
+### Sex ratio   
+```{r graph sex ratio M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+
+g_sexratio<-ggplot(M25_F0, aes(ANNEE, SEX_RATIO)) +
+  geom_smooth(color="black")+
+  geom_hline(yintercept=0,linetype="dashed")+
+  labs(x="Année",y="% mâles dans population adulte à l'automne")+
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="none",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_sexratio
+
+```
+
+
+
+
+
+
+
+## Diminution récolte mâles et aucune récolte femelles
+
+*Diminution de 75% de la récolte de mâles, aucune récolte de femelles et veaux, toujours par rapport à la récolte 2022*
+
+### Récolte par organisation    
+```{r graph recolte M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+rec=M25_F0 %>%
+    gather(key,value, R_SEPAQ)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_rec_M25_F0<-ggplot(rec, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nb orignaux récoltés")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_rec_M25_F0
+
+```
+
+### Taux exploitation   
+```{r graph taux exp M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+texp=M25_F0 %>%
+    gather(key,value, TAUX_EXP_SEPAQ)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25_F0<-ggplot(texp, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25_F0
+
+```
+
+
+### Taux exploitation segment mâle 
+```{r graph taux exp m M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+texpm=M25_F0 %>%
+    gather(key,value, TAUX_EXP_M)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25_F0<-ggplot(texpm, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation mâles (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25_F0
+
+```
+
+### Taux exploitation segment femelle 
+```{r graph taux exp f M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+texpf=M25_F0 %>%
+    gather(key,value, TAUX_EXP_F)%>%
+    filter(SEGMENT=="TOTAL")
+
+g_texp_M25_F0<-ggplot(texpf, aes(ANNEE,value, fill=key, label=value)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Taux d'exploitation femelles (%)")+
+  scale_fill_manual(name="Organisation", labels=c("Sépaq"), values=c("#36903E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_texp_M25_F0
+
+```
+
+### Récolte par segment   
+```{r graph recolte seg M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+recseg <- droplevels(M25_F0[!M25_F0$SEGMENT == 'TOTAL',])
+recseg$SEGMENT = factor(recseg$SEGMENT, levels = c("V","F","M"))
+
+g_rec_M25_F0<-ggplot(recseg, aes(ANNEE,R_TOTAL, fill=SEGMENT, label=R_TOTAL)) +
+  geom_col()+
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color = "white")+
+  #scale_y_continuous(limits=c(1650,3850), breaks=c(1650,1850,2050,2250,2450,2650,2850,3050,3250,3450,3650,3850))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nb orignaux récoltés")+
+  scale_fill_manual(values = c("#A7D59E", "#36903E", "#004616"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_rec_M25_F0
+
+```
+
+### Population d'orignaux   
+```{r graph pop M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+g_pop<-ggplot(M25_F0, aes(ANNEE,NB_POP,group=SEGMENT,color=SEGMENT)) +
+  geom_smooth()+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  #scale_y_continuous(limits=c(-500,3000))+ 
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  labs(x="Année",y="Nombre d'orignaux")+
+  scale_color_manual(values=c("black","#36903E", "#004616","#A7D59E"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_pop
+
+```
+
+### Densité   
+```{r graph densite M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+
+g_densite<-ggplot(M25_F0, aes(ANNEE, DENSITE)) +
+  geom_smooth(color="black")+
+  labs(x="Année",y="Densité (nb orignaux/10km2)")+
+  geom_hline(yintercept = 0,linetype="dashed")+
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  #scale_colour_manual(name="Valeur", labels=c("Densité (Nb orignaux/10km2)","Sex ratio (%)","Taux d'exploitation (%)"), values=c("blue","red"))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="none",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_densite
+
+```
+
+### Sex ratio   
+```{r graph sex ratio M25_F0, echo = FALSE, message=FALSE, warning=FALSE}
+
+g_sexratio<-ggplot(M25_F0, aes(ANNEE, SEX_RATIO)) +
+  geom_smooth(color="black")+
+  geom_hline(yintercept=0,linetype="dashed")+
+  labs(x="Année",y="% mâles dans population adulte à l'automne")+
+  scale_x_continuous(limits=c(2022,2030), breaks=c(2023,2024,2025,2026,2027,2028,2029))+
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="none",
+        legend.text=element_text(size=10),
+        legend.title=element_text(size=10,face="bold"),
+        aspect.ratio = 1,
+        axis.line = element_line(colour = "black"), 
+        axis.text.y= element_text(size=12),
+        axis.text.x = element_text(angle = 20, size=12, vjust=0.5),
+        axis.title=element_text(size=12, face="bold", vjust=0.75))+
+  panel_border(colour="black",size=1.1,linetype=1) 
+g_sexratio
+
+```
